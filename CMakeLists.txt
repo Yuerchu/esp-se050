@@ -1,3 +1,7 @@
+if(NOT CONFIG_SE050_ENABLED)
+    return()
+endif()
+
 set(srcs
     "nanopackage/apdu/se05x_APDU_impl.c"
     "nanopackage/apdu/smCom.c"

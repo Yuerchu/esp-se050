@@ -8,7 +8,6 @@ typedef struct esp_se050_session_cfg {
     const uint8_t *scp03_enc_key;
     const uint8_t *scp03_mac_key;
     const uint8_t *scp03_dek_key;
-    size_t scp03_key_len;
 
     const uint8_t *ec_key;
     size_t ec_key_len;

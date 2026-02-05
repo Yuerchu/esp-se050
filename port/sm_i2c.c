@@ -11,6 +11,10 @@
 
 #include "driver/i2c_master.h"
 
+#ifndef CONFIG_SE050_I2C_TIMEOUT_MS
+#define CONFIG_SE050_I2C_TIMEOUT_MS 1000
+#endif
+
 typedef struct {
     i2c_master_bus_handle_t bus_handle;
     i2c_master_dev_handle_t dev_handle;
@@ -104,7 +108,7 @@ i2c_error_t axI2CWrite(void *conn_ctx, unsigned char bus, unsigned char addr,
         return I2C_FAILED;
     }
 
-    esp_err_t ret = i2c_master_transmit(s_i2c_ctx.dev_handle, pTx, txLen, -1);
+    esp_err_t ret = i2c_master_transmit(s_i2c_ctx.dev_handle, pTx, txLen, CONFIG_SE050_I2C_TIMEOUT_MS);
     return (ret == ESP_OK) ? I2C_OK : I2C_FAILED;
 }
 
@@ -119,6 +123,6 @@ i2c_error_t axI2CRead(void *conn_ctx, unsigned char bus, unsigned char addr,
         return I2C_FAILED;
     }
 
-    esp_err_t ret = i2c_master_receive(s_i2c_ctx.dev_handle, pRx, rxLen, -1);
+    esp_err_t ret = i2c_master_receive(s_i2c_ctx.dev_handle, pRx, rxLen, CONFIG_SE050_I2C_TIMEOUT_MS);
     return (ret == ESP_OK) ? I2C_OK : I2C_FAILED;
 }

@@ -29,6 +29,13 @@ menu "NXP SE050 Secure Element"
             int "I2C clock frequency (Hz)"
             default 400000
 
+        config SE050_I2C_TIMEOUT_MS
+            int "I2C transaction timeout (ms)"
+            default 1000
+            range 100 10000
+            help
+                Maximum time to wait for I2C read/write transactions.
+
         choice SE050_AUTH_MODE
             prompt "Authentication mode"
             default SE050_AUTH_NONE

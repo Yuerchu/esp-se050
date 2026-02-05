@@ -7,8 +7,6 @@
 #include "freertos/semphr.h"
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/pk.h"
-#include "mbedtls/ecp.h"
-#include "esp_tls.h"
 
 #include "se05x_APDU_apis.h"
 #include "se05x_mbedtls.h"
@@ -17,25 +15,26 @@ static const char *TAG = "esp-se050";
 
 Se05xSession_t pSession;
 static int s_refcount = 0;
-static SemaphoreHandle_t s_session_mutex;
+static portMUX_TYPE s_init_mux = portMUX_INITIALIZER_UNLOCKED;
+static SemaphoreHandle_t s_session_mutex = NULL;
 
 #define ESP_SE050_MAX_CERT_SIZE 4096
 
 static void session_lock(void)
 {
     if (s_session_mutex == NULL) {
-        s_session_mutex = xSemaphoreCreateMutex();
+        portENTER_CRITICAL(&s_init_mux);
+        if (s_session_mutex == NULL) {
+            s_session_mutex = xSemaphoreCreateMutex();
+        }
+        portEXIT_CRITICAL(&s_init_mux);
     }
-    if (s_session_mutex != NULL) {
-        xSemaphoreTake(s_session_mutex, portMAX_DELAY);
-    }
+    xSemaphoreTake(s_session_mutex, portMAX_DELAY);
 }
 
 static void session_unlock(void)
 {
-    if (s_session_mutex != NULL) {
-        xSemaphoreGive(s_session_mutex);
-    }
+    xSemaphoreGive(s_session_mutex);
 }
 
 static esp_err_t session_configure(const esp_se050_session_cfg_t *cfg)
@@ -233,37 +232,39 @@ static esp_err_t extract_pubkey_p256(mbedtls_x509_crt *crt, uint8_t *pubkey, siz
         return ESP_ERR_INVALID_STATE;
     }
 
-    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec(crt->pk);
-    if (ecp->MBEDTLS_PRIVATE(grp).id != MBEDTLS_ECP_DP_SECP256R1) {
+    // Use public API to write the EC public key (0x04 || x || y)
+    unsigned char tmp[128];
+    unsigned char *p = tmp + sizeof(tmp);
+    int len = mbedtls_pk_write_pubkey(&p, tmp, &crt->pk);
+    if (len < 0) {
+        return ESP_FAIL;
+    }
+
+    // P-256 uncompressed point: 0x04 + 32 bytes X + 32 bytes Y = 65 bytes
+    if (len != 65 || *p != 0x04) {
+        ESP_LOGE(TAG, "Not a P-256 uncompressed key (len=%d)", len);
         return ESP_ERR_NOT_SUPPORTED;
     }
 
-    size_t len = 0;
-    int ret = mbedtls_ecp_point_write_binary(&ecp->MBEDTLS_PRIVATE(grp),
-        &ecp->MBEDTLS_PRIVATE(Q),
-        MBEDTLS_ECP_PF_UNCOMPRESSED,
-        &len,
-        pubkey,
-        *pubkey_len);
-    if (ret != 0) {
-        return ESP_FAIL;
+    if ((size_t)len > *pubkey_len) {
+        return ESP_ERR_NO_MEM;
     }
-    *pubkey_len = len;
+
+    memcpy(pubkey, p, len);
+    *pubkey_len = (size_t)len;
     return ESP_OK;
 }
 
 esp_err_t esp_se050_tls_pki_setup(mbedtls_ssl_config *conf,
     mbedtls_x509_crt *cert,
     mbedtls_pk_context *key,
-    const void *cfg)
+    const esp_se050_tls_cfg_t *cfg)
 {
     if (conf == NULL || cert == NULL || key == NULL || cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    const esp_tls_cfg_t *tls_cfg = (const esp_tls_cfg_t *)cfg;
-
-    esp_err_t err = esp_se050_session_acquire(tls_cfg->se050_session_cfg);
+    esp_err_t err = esp_se050_session_acquire(cfg->session_cfg);
     if (err != ESP_OK) {
         return err;
     }
@@ -274,12 +275,12 @@ esp_err_t esp_se050_tls_pki_setup(mbedtls_ssl_config *conf,
     uint8_t *cert_buf = NULL;
     size_t cert_len = 0;
 
-    if (tls_cfg->clientcert_buf != NULL && tls_cfg->clientcert_bytes > 0) {
+    if (cfg->clientcert_buf != NULL && cfg->clientcert_bytes > 0) {
         ESP_LOGW(TAG, "clientcert_buf is used instead of SE050 cert object");
-        cert_buf = (uint8_t *)tls_cfg->clientcert_buf;
-        cert_len = tls_cfg->clientcert_bytes;
-    } else if (tls_cfg->se050_cert_id != 0) {
-        err = read_cert_from_se050(tls_cfg->se050_cert_id, &cert_buf, &cert_len);
+        cert_buf = (uint8_t *)cfg->clientcert_buf;
+        cert_len = cfg->clientcert_bytes;
+    } else if (cfg->cert_id != 0) {
+        err = read_cert_from_se050(cfg->cert_id, &cert_buf, &cert_len);
         if (err != ESP_OK) {
             esp_se050_session_release();
             return err;
@@ -293,7 +294,7 @@ esp_err_t esp_se050_tls_pki_setup(mbedtls_ssl_config *conf,
     int ret = mbedtls_x509_crt_parse(cert, cert_buf, cert_len);
     if (ret != 0) {
         ESP_LOGE(TAG, "mbedtls_x509_crt_parse failed: %d", ret);
-        if (cert_buf != tls_cfg->clientcert_buf) {
+        if (cert_buf != cfg->clientcert_buf) {
             free(cert_buf);
         }
         esp_se050_session_release();
@@ -305,7 +306,7 @@ esp_err_t esp_se050_tls_pki_setup(mbedtls_ssl_config *conf,
     err = extract_pubkey_p256(cert, pubkey, &pubkey_len);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Unsupported public key type/curve");
-        if (cert_buf != tls_cfg->clientcert_buf) {
+        if (cert_buf != cfg->clientcert_buf) {
             free(cert_buf);
         }
         esp_se050_session_release();
@@ -314,9 +315,9 @@ esp_err_t esp_se050_tls_pki_setup(mbedtls_ssl_config *conf,
 
     uint8_t refkey_der[256] = {0};
     size_t refkey_len = sizeof(refkey_der);
-    err = esp_se050_make_refkey_p256(tls_cfg->se050_key_id, pubkey, pubkey_len, refkey_der, &refkey_len);
+    err = esp_se050_make_refkey_p256(cfg->key_id, pubkey, pubkey_len, refkey_der, &refkey_len);
     if (err != ESP_OK) {
-        if (cert_buf != tls_cfg->clientcert_buf) {
+        if (cert_buf != cfg->clientcert_buf) {
             free(cert_buf);
         }
         esp_se050_session_release();
@@ -326,7 +327,7 @@ esp_err_t esp_se050_tls_pki_setup(mbedtls_ssl_config *conf,
     ret = mbedtls_pk_parse_key(key, refkey_der, refkey_len, NULL, 0, NULL, NULL);
     if (ret != 0) {
         ESP_LOGE(TAG, "mbedtls_pk_parse_key failed: %d", ret);
-        if (cert_buf != tls_cfg->clientcert_buf) {
+        if (cert_buf != cfg->clientcert_buf) {
             free(cert_buf);
         }
         esp_se050_session_release();
@@ -336,14 +337,14 @@ esp_err_t esp_se050_tls_pki_setup(mbedtls_ssl_config *conf,
     ret = mbedtls_ssl_conf_own_cert(conf, cert, key);
     if (ret != 0) {
         ESP_LOGE(TAG, "mbedtls_ssl_conf_own_cert failed: %d", ret);
-        if (cert_buf != tls_cfg->clientcert_buf) {
+        if (cert_buf != cfg->clientcert_buf) {
             free(cert_buf);
         }
         esp_se050_session_release();
         return ESP_FAIL;
     }
 
-    if (cert_buf != tls_cfg->clientcert_buf) {
+    if (cert_buf != cfg->clientcert_buf) {
         free(cert_buf);
     }
 

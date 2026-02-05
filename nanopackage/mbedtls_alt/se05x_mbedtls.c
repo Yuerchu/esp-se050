@@ -6,6 +6,7 @@
 #include "se05x_mbedtls.h"
 #include <sm_port.h>
 #include "se05x_APDU_apis.h"
+#include "esp_se050.h"
 #include <string.h>
 
 
@@ -16,24 +17,12 @@ smStatus_t se05x_open_session(void)
     }
 
     SMLOG_I("Open Session to SE05x \n");
-    smStatus_t status = Se05x_API_SessionOpen(&pSession);
-    if (status != SM_OK) {
-        SMLOG_E("Error in Se05x_API_SessionOpen \n");
-    }
-    return status;
+    esp_err_t err = esp_se050_session_acquire(NULL);
+    return (err == ESP_OK) ? SM_OK : SM_NOT_OK;
 }
 
 smStatus_t se05x_close_session(void)
 {
-    if (pSession.conn_context == NULL) {
-        return SM_OK;
-    }
-
-    SMLOG_I("Close Session to SE05x \n");
-    smStatus_t status = Se05x_API_SessionClose(&pSession);
-    if (status != SM_OK) {
-        SMLOG_E("Error in Se05x_API_SessionClose \n");
-    }
-    pSession.conn_context = NULL;
-    return status;
+    esp_se050_session_release();
+    return SM_OK;
 }

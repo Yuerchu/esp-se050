@@ -61,11 +61,9 @@ idf_component_register(
     SRCS ${srcs}
     INCLUDE_DIRS ${include_dirs}
     REQUIRES driver mbedtls
-    PRIV_REQUIRES esp-tls
 )
 
 target_compile_definitions(${COMPONENT_LIB} PUBLIC ${compile_defs})
-target_compile_definitions(${COMPONENT_LIB} PRIVATE MBEDTLS_ALLOW_PRIVATE_ACCESS)
 
 if(CONFIG_SE050_APDU_BUFFER_SIZE)
     target_compile_definitions(${COMPONENT_LIB} PUBLIC

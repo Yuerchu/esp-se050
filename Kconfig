@@ -1,0 +1,89 @@
+menu "NXP SE050 Secure Element"
+
+    config SE050_ENABLED
+        bool "Enable NXP SE050 Secure Element support"
+        default n
+        help
+            Enable support for NXP SE050/SE051 EdgeLock secure element.
+            Requires SE050 connected via I2C.
+
+    if SE050_ENABLED
+
+        config SE050_I2C_PORT
+            int "I2C port number"
+            default 0
+
+        config SE050_I2C_SDA_PIN
+            int "I2C SDA GPIO pin"
+            default 21
+
+        config SE050_I2C_SCL_PIN
+            int "I2C SCL GPIO pin"
+            default 22
+
+        config SE050_I2C_ADDR
+            hex "SE050 I2C slave address"
+            default 0x48
+
+        config SE050_I2C_CLOCK_HZ
+            int "I2C clock frequency (Hz)"
+            default 400000
+
+        choice SE050_AUTH_MODE
+            prompt "Authentication mode"
+            default SE050_AUTH_NONE
+            help
+                Select the authentication mode for SE050 communication.
+
+            config SE050_AUTH_NONE
+                bool "No authentication (plaintext)"
+
+            config SE050_AUTH_MODE_SCP03
+                bool "SCP03 secure channel"
+
+            config SE050_AUTH_MODE_ECKEY
+                bool "EC Key authentication"
+
+            config SE050_AUTH_MODE_ECKEY_SCP03
+                bool "EC Key + SCP03"
+        endchoice
+
+        config SE050_MBEDTLS_ALT
+            bool "Enable mbedTLS ALT (hardware ECDSA offload)"
+            default n
+            help
+                Enable mbedTLS ECDSA_SIGN_ALT to offload ECDSA signing
+                to SE050 hardware using reference key mechanism.
+
+        config SE050_APDU_MUTEX
+            bool "Enable APDU mutex for thread safety"
+            default y
+
+        config SE050_APDU_BUFFER_SIZE
+            int "APDU buffer size (bytes)"
+            default 512
+            range 255 1024
+
+        config SE050_LOG_LEVEL
+            int "Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)"
+            default 3
+            range 0 4
+
+        config SE050_SCP03
+            bool
+            default y if SE050_AUTH_MODE_SCP03
+            depends on SE050_ENABLED
+
+        config SE050_ECKEY
+            bool
+            default y if SE050_AUTH_MODE_ECKEY
+            depends on SE050_ENABLED
+
+        config SE050_ECKEY_SCP03
+            bool
+            default y if SE050_AUTH_MODE_ECKEY_SCP03
+            depends on SE050_ENABLED
+
+    endif
+
+endmenu

@@ -1,0 +1,8 @@
+This component vendors code from the NXP Plug & Trust nano-package.
+
+Upstream: https://github.com/NXPPlugNTrust/nano-package
+Version: v1.5.4
+License: Apache-2.0 (see individual source file headers in nanopackage/)
+
+The overall component license for the non-vendored code in this directory
+remains MPL-2.0 as specified in LICENSE.

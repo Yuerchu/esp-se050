@@ -1,0 +1,3 @@
+version: "0.1.0"
+description: "NXP SE050 secure element support (nano-package) for ESP-IDF"
+license: "MPL-2.0"

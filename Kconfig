@@ -76,20 +76,31 @@ menu "NXP SE050 Secure Element"
             default 3
             range 0 4
 
+        config SE050_DERIVE_KEY
+            bool "Enable SE050-backed key derivation (ECDH + HKDF)"
+            default n
+            help
+                Enable esp_se050_derive_key() for hardware-backed key derivation.
+                Uses SE050 ECDH + software HKDF-SHA256 to derive keys.
+
+        config SE050_DEK_KEY_ID
+            hex "SE050 object ID for DEK derivation key (ECDH)"
+            default 0x0
+            depends on SE050_DERIVE_KEY
+            help
+                Object ID of the EC key pair in SE050 used for key derivation via ECDH.
+
         config SE050_SCP03
             bool
             default y if SE050_AUTH_MODE_SCP03
-            depends on SE050_ENABLED
 
         config SE050_ECKEY
             bool
             default y if SE050_AUTH_MODE_ECKEY
-            depends on SE050_ENABLED
 
         config SE050_ECKEY_SCP03
             bool
             default y if SE050_AUTH_MODE_ECKEY_SCP03
-            depends on SE050_ENABLED
 
     endif
 

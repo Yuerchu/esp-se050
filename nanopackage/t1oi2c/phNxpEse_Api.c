@@ -503,6 +503,7 @@ static int phNxpEse_readPacket(void *conn_ctx, void *pDevHandle, uint8_t *pBuffe
     int ret         = -1;
     int sof_counter = 0; /* one read may take 1 ms*/
     int total_count = 0, numBytesToRead = 0, headerIndex = 0;
+    const int nNbBytesToRead_max = nNbBytesToRead; /* save original buffer size for bounds checking */
     phNxpEse_Context_t *nxpese_ctxt = (conn_ctx == NULL) ? &gnxpese_ctxt : (phNxpEse_Context_t *)conn_ctx;
 
     ENSURE_OR_GO_EXIT(pBuffer != NULL);
@@ -559,6 +560,12 @@ static int phNxpEse_readPacket(void *conn_ctx, void *pDevHandle, uint8_t *pBuffe
             total_count    = 4;
             nNbBytesToRead = (pBuffer[2] << 8 & 0xFF) | (pBuffer[3] & 0xFF);
 #endif
+            /* Bounds check: ensure payload + header + CRC fits in buffer */
+            if (nNbBytesToRead + PH_PROTO_7816_HEADER_LEN + PH_PROTO_7816_CRC_LEN > nNbBytesToRead_max) {
+                T_SMLOG_E("Packet length %d exceeds buffer size", nNbBytesToRead);
+                ret = -1;
+                break;
+            }
             /* Read the Complete data + two byte CRC*/
             ret = phPalEse_i2c_read(
                 pDevHandle, &pBuffer[PH_PROTO_7816_HEADER_LEN], (nNbBytesToRead + PH_PROTO_7816_CRC_LEN));
@@ -603,6 +610,12 @@ static int phNxpEse_readPacket(void *conn_ctx, void *pDevHandle, uint8_t *pBuffe
         total_count    = 4;
         nNbBytesToRead = (pBuffer[2] << 8 & 0xFF00) | (pBuffer[3] & 0xFF);
 #endif
+        /* Bounds check: ensure payload + header + CRC fits in buffer */
+        if (nNbBytesToRead + PH_PROTO_7816_HEADER_LEN + PH_PROTO_7816_CRC_LEN > nNbBytesToRead_max) {
+            T_SMLOG_E("Packet length %d exceeds buffer size", nNbBytesToRead);
+            ret = -1;
+            goto exit;
+        }
         /* Read the Complete data + two byte CRC*/
         ret =
             phPalEse_i2c_read(pDevHandle, &pBuffer[PH_PROTO_7816_HEADER_LEN], (nNbBytesToRead + PH_PROTO_7816_CRC_LEN));
